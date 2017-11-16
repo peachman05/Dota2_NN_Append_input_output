@@ -1,7 +1,7 @@
 -------------  Include 
 dkjson = package.loaded['game/dkjson']
 -- local Q_Model = require("lua/lua/q_learning")
--- local table_print = require("lua/lua/table_print")
+local table_print = require("lua/lua/table_print")
 -- local sort_table = require("lua/lua/sort_table")
 DQN = require("lua/lua/dqn")
 
@@ -109,7 +109,7 @@ end
 ---------- Connect Server Function
 function CAddonTemplateGameMode:requestActionFromServer(method, input)
 	input = input or {}
-	
+
 	local dataSend = {}
 	dataSend['method'] = method
 
@@ -137,20 +137,13 @@ function CAddonTemplateGameMode:requestActionFromServer(method, input)
 	request:Send( 	function( result ) 
 						 
 							  if result["StatusCode"] == 200  then  
-									-- print( result['Body'] )
 									dict_value = dkjson.decode(result['Body'])	
-									-- print(string.len(result['Body']))
-									-- print(table_print.tostring(value))
-									-- print(table.getn(dict_value))
-									-- print("finish")
 
 									if dataSend['method'] == GET_DQN_DETAIL then	
 										local input = dict_value['num_input']
 										local output = dict_value['num_output']
 										local hidden_layer = dict_value['list_hidden']	
-										print( result['Body'] )
-										-- table_print.loop_print(hidden_layer)
-										-- print("dd pp")
+										print( result['Body'] )										
 										dqn_agent = DQN.new(input, output, hidden_layer)
 										print("get model")
 										GameRules:GetGameModeEntity():SetThink( "GetDQN_Model", self ,3)
@@ -158,27 +151,14 @@ function CAddonTemplateGameMode:requestActionFromServer(method, input)
 									elseif dataSend['method'] == GET_WEIGHT then
 										num_layer = dataSend['layer']
 										row = dataSend['row']
-										-- print(num_layer.." "..row)
-										-- print(type(dict_value['weight']))
-										-- number_layer = dict_value['layer']
-										dqn_agent.weight_array[num_layer][row] = dict_value['weight']
-
-										
+										dqn_agent.weight_array[num_layer][row] = dict_value['weight']										
 								
 									elseif dataSend['method'] == GET_BIAS then										
-										num_layer = dataSend['layer']
-										-- row = dataSend['row']
-										-- print(num_layer.." "..row)
-										-- print(type(dict_value['weight']))
-										-- print( result['Body'] )
-										-- table_print.loop_print( dict_value['bias'] )
+										num_layer = dataSend['layer']									
 										dqn_agent.bias_array[num_layer] = dict_value['bias']
-										-- table_print.loop_print( dqn_agent.bias_array[num_layer] )
-
 										if num_layer == 1  then
 											table_print.loop_print( dqn_agent.bias_array[num_layer] )
 										end
-
 										if num_layer == dqn_agent.total_weight_layer then
 											self:resetThing()
 											GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self , 2)
@@ -192,22 +172,26 @@ function CAddonTemplateGameMode:requestActionFromServer(method, input)
 
 									end
 
-									-- dqn_agent.set_weitght(value['weights_all']) 
-									-- dqn_agent.set_bias(value['bias_all'])		  		
-									--   if(method == GET_TABLE_STATE)then									  		
-									--   		dqn_agent.q_table = dkjson.decode(result['Body'])
-									-- 		dqn_agent:printTable(dqn_agent.q_table,"---Q_table---")
-									--   elseif
-									--   		value = dkjson.decode(result['Body'])	
-									--   		dqn_agent.set_weitght(value['weights_all']) 
-									-- 		dqn_agent.set_bias(value['bias_all'])		  		
-									--   end
 				              end
 				              
 					end )	
 end
 
+function CAddonTemplateGameMode:GetDQN_Model()
+	local temp_table = dqn_agent.hidden_layer
+	table_print.loop_print(temp_table)
+	for layer = 1,#temp_table do
+		for row = 1,temp_table[layer] do
+			self:requestActionFromServer(GET_WEIGHT, {layer, row}) 
+		end
+	end
 
+	for layer = 1,#temp_table do
+		self:requestActionFromServer(GET_BIAS, {layer}) 
+
+	end
+	
+end
 
 ---------- State Control Function
 old_state = {}
