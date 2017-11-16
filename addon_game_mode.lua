@@ -14,8 +14,11 @@ GET_DQN_DETAIL = 22
 GET_WEIGHT = 23
 GET_BIAS = 24
 
-name_hero = "npc_dota_hero_sniper" 
+--- weight 
+lasthit_reward_weight = 5
+decrease_episode_reward = -1
 
+name_hero = "npc_dota_hero_sniper" 
 
 
 -- Generated from template
@@ -57,11 +60,11 @@ function CAddonTemplateGameMode:InitGameMode()
 
 end
 
---------- Call From InitGameMode
+---------- Call From InitGameMode
 
 function CAddonTemplateGameMode:InitialValue()
-
-	goodSpawn_Radian = Entities:FindByName( nil, "npc_dota_spawner_good_mid_staging" )
+	
+	--------- Hero Find
 	-- hero = CreateUnitByName( "npc_dota_hero_sniper" , goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )
 	hero = Entities:FindByName(nil, name_hero)
 	attackRangeHero = hero:GetAttackRange()
@@ -103,31 +106,133 @@ function CAddonTemplateGameMode:HealthTower()
 	return 5
 end
 
+---------- Connect Server Function
+function CAddonTemplateGameMode:requestActionFromServer(method, input)
+	input = input or {}
+	
+	local dataSend = {}
+	dataSend['method'] = method
 
--------- State Control Function
+	if dataSend['method'] == GET_DQN_DETAIL then	
+		print("send detail")
+		
+	elseif dataSend['method'] == GET_WEIGHT then
+		dataSend['layer'] = input[1]
+		dataSend['row']	= input[2]
+
+	elseif dataSend['method'] == GET_BIAS then
+		dataSend['layer'] = input[1]
+
+	elseif dataSend['method'] == UPPDATE_MODEL_STATE then
+		print("update model")
+		dataSend['mem_episode'] = dqn_agent.memory
+
+	end
+
+
+	request = CreateHTTPRequestScriptVM("POST","http://localhost:8080" )
+	request:SetHTTPRequestHeaderValue("Accept", "application/json")		
+	request:SetHTTPRequestRawPostBody('application/json', dkjson.encode(dataSend))
+
+	request:Send( 	function( result ) 
+						 
+							  if result["StatusCode"] == 200  then  
+									-- print( result['Body'] )
+									dict_value = dkjson.decode(result['Body'])	
+									-- print(string.len(result['Body']))
+									-- print(table_print.tostring(value))
+									-- print(table.getn(dict_value))
+									-- print("finish")
+
+									if dataSend['method'] == GET_DQN_DETAIL then	
+										local input = dict_value['num_input']
+										local output = dict_value['num_output']
+										local hidden_layer = dict_value['list_hidden']	
+										print( result['Body'] )
+										-- table_print.loop_print(hidden_layer)
+										-- print("dd pp")
+										dqn_agent = DQN.new(input, output, hidden_layer)
+										print("get model")
+										GameRules:GetGameModeEntity():SetThink( "GetDQN_Model", self ,3)
+										
+									elseif dataSend['method'] == GET_WEIGHT then
+										num_layer = dataSend['layer']
+										row = dataSend['row']
+										-- print(num_layer.." "..row)
+										-- print(type(dict_value['weight']))
+										-- number_layer = dict_value['layer']
+										dqn_agent.weight_array[num_layer][row] = dict_value['weight']
+
+										
+								
+									elseif dataSend['method'] == GET_BIAS then										
+										num_layer = dataSend['layer']
+										-- row = dataSend['row']
+										-- print(num_layer.." "..row)
+										-- print(type(dict_value['weight']))
+										-- print( result['Body'] )
+										-- table_print.loop_print( dict_value['bias'] )
+										dqn_agent.bias_array[num_layer] = dict_value['bias']
+										-- table_print.loop_print( dqn_agent.bias_array[num_layer] )
+
+										if num_layer == 1  then
+											table_print.loop_print( dqn_agent.bias_array[num_layer] )
+										end
+
+										if num_layer == dqn_agent.total_weight_layer then
+											self:resetThing()
+											GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self , 2)
+										end
+									
+									elseif dataSend['method'] == UPPDATE_MODEL_STATE then
+										dqn_agent.memory = {}
+										print("startt")
+										self:GetDQN_Model()
+										print("finishhh")
+
+									end
+
+									-- dqn_agent.set_weitght(value['weights_all']) 
+									-- dqn_agent.set_bias(value['bias_all'])		  		
+									--   if(method == GET_TABLE_STATE)then									  		
+									--   		dqn_agent.q_table = dkjson.decode(result['Body'])
+									-- 		dqn_agent:printTable(dqn_agent.q_table,"---Q_table---")
+									--   elseif
+									--   		value = dkjson.decode(result['Body'])	
+									--   		dqn_agent.set_weitght(value['weights_all']) 
+									-- 		dqn_agent.set_bias(value['bias_all'])		  		
+									--   end
+				              end
+				              
+					end )	
+end
+
+
+
+---------- State Control Function
+old_state = {}
+old_last_hit = 0
+rewardEpisode = 0
+episode_last_hit = 0
+countEpisode = 0
 
 function CAddonTemplateGameMode:TimeStepAction()
 	
 	local state = self:getState()
-	local done = self:checkDone()	
+	local done = self:checkDone()		
+	local reward = self:calculateReward()
 
-	if(firstTime)then
-		firstTime = false
-	else
-		reward = self:calculateReward()
-		rewardEpisode = rewardEpisode + reward
-		if #old_state ~= 0 then
-			dqn_agent:remember( {old_state,state,state_action,reward} )
-		end
-		old_last_hit = 0
+	rewardEpisode = rewardEpisode + reward
+	if #old_state ~= 0 then
+		dqn_agent:remember( {old_state,state,state_action,reward} )
 	end
+	old_last_hit = 0
 
 	if(done)then
 		print("reset")
 		self:resetEpisode()
-		-- return 0.2
 	else
-		diff = state[2] - state[3] -- creep - hero
+		local diff = state[2] - state[3] -- creep - hero
 		if( diff > 0.25)then
 			state_action = FORWARD_ACTION_STATE
 
@@ -171,6 +276,99 @@ function CAddonTemplateGameMode:getState()
 	return stateArray
 end
 
+function CAddonTemplateGameMode:checkDone()
+	local countCreepDieDire = 0
+	local countCreepDieRadian = 0 
+
+	----------- Count die creep number 
+	for i = 1,#creeps_Dire do 
+		if(creeps_Dire[i]:IsNull() or creeps_Dire[i]:IsAlive() == false )then
+			countCreepDieDire = countCreepDieDire + 1
+		end
+	end
+
+	for i = 1,#creeps_Radian do
+		if(creeps_Radian[i]:IsNull() or creeps_Radian[i]:IsAlive() == false )then
+			countCreepDieRadian = countCreepDieRadian + 1
+		end
+	end
+
+	------------- Reset the episode when all dire creep are die
+	if(countCreepDieDire == #creeps_Dire)then
+		resetEpisodeReward = 0
+		return true	
+	end
+
+	------------ When Hero is going to die, Reset the episode
+	if hero:GetHealth() < 50 then
+		resetEpisodeReward = -50
+		return true
+	end
+
+	return false
+end
+
+function CAddonTemplateGameMode:calculateReward(state, state_action)
+
+	min_distance_creep, min_distance = self:getMinDistanceCreep(false)
+	distance = CalcDistanceBetweenEntityOBB(min_distance_creep,hero);
+	rewardAttackRange = 0
+	if( distance >= attackRangeHero + 300)then
+		rewardAttackRange = -1
+	else
+		rewardAttackRange = 1
+	end
+	
+	------- Calculate reward when fail to last hit 
+	local reward_attack_delay = 0
+	if old_last_hit == 0 and state_action == LASTHIT_ACTION_STATE then
+		reward_attack_delay = -5		
+	end
+
+	return  resetEpisodeReward + old_last_hit*lasthit_reward_weight + decrease_episode_reward --+  reward_attack_delay
+end
+
+function CAddonTemplateGameMode:resetEpisode()	
+		
+	print(rewardEpisode)
+	rewardEpisode = 0
+	resetEpisodeReward = 0
+
+	countEpisode = countEpisode + 1
+	print(countEpisode)
+
+
+	self:ForceKillCreep(creeps_Radian)
+	self:ForceKillCreep(creeps_Dire)
+
+	if(countEpisode % 15 == 0)then
+		print("creep kill in episode: "..episode_last_hit)
+		episode_last_hit = 0
+		self:requestActionFromServer(UPPDATE_MODEL_STATE)
+
+	else
+		self:resetThing()
+		GameRules:GetGameModeEntity():SetThink( "callRe", self )
+
+	end
+
+end
+
+function CAddonTemplateGameMode:resetThing()
+	--------- Spawn Creep and Hero
+	self:CreateCreep()	
+	hero:SetRespawnPosition(midRadianTower:GetAbsOrigin()+ RandomVector( RandomFloat( 0, 200 )) )
+	SendToServerConsole("dota_dev hero_respawn")
+
+end
+
+function CAddonTemplateGameMode:callRe()
+	GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self )
+end
+
+
+
+
 ------- Event Function
 
 function CAddonTemplateGameMode:OnEntity_kill(event)
@@ -195,3 +393,143 @@ function CAddonTemplateGameMode:OnInitial()
 	GameRules:GetGameModeEntity():SetThink( "HealthTower", self , 5)
 	print("init")
 end
+
+--------- Creep Function
+function CAddonTemplateGameMode:CreateCreep()
+	
+	--------------- Create Radian Creep
+	local goodSpawn_Radian = midRadianTower
+	local goodWP_Radian = Entities:FindByName ( nil, "lane_mid_pathcorner_goodguys_1")	
+	creeps_Radian = {}
+	for i=1,2 do
+		creeps_Radian[i] = CreateUnitByName( "npc_dota_creep_goodguys_melee" , goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )				
+	end
+	-- creeps_Radian[4] = CreateUnitByName( "npc_dota_creep_goodguys_ranged" , goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )
+	for i = 1,2 do 
+		creeps_Radian[i]:SetInitialGoalEntity( goodWP_Radian )
+	end
+
+
+	--------------- Create Dire Creep
+	local goodSpawn_Dire = midDireTower
+	local goodWP_Dire = Entities:FindByName ( nil, "lane_mid_pathcorner_badguys_1")	
+	creeps_Dire = {}
+	for i=1,1 do
+		creeps_Dire[i] = CreateUnitByName( "npc_dota_creep_goodguys_melee" , goodSpawn_Dire:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_BADGUYS )	
+
+	end
+	-- creeps_Dire[4] = CreateUnitByName( "npc_dota_creep_goodguys_ranged" , goodSpawn_Dire:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_BADGUYS )
+	local randomNum = RandomInt(1,10)
+	for i = 1,1 do 
+		creeps_Dire[i]:SetInitialGoalEntity( goodWP_Dire )
+		-- creeps_Dire[i]:SetForceAttackTarget(hero)
+	end
+
+end
+
+function CAddonTemplateGameMode:ForceKillCreep(creeps)
+	print(#creeps)
+	if #creeps > 0 then
+		for i = 1,#creeps do 
+			if(creeps[i] ~= nil and creeps[i]:IsNull() == false and creeps[i]:IsAlive() )then
+				creeps[i]:ForceKill(false)
+			end
+		end
+	end
+end
+
+function CAddonTemplateGameMode:getMinHpCreep(creeps)
+	local creeps = creeps or creeps_Dire
+
+	local minHp = 999;
+	local minHp_creep = nil;
+
+	for i,creep in pairs(creeps) do
+		if(creep:IsNull() == false and creep:IsAlive() )then
+			hp = creep:GetHealth();
+			if(  hp < minHp )then
+				minHp = hp;
+				minHp_creep = creep;
+			end
+		end
+	end
+
+	return minHp_creep,minHp
+
+end
+
+function CAddonTemplateGameMode:findDistanceMinCreep()
+	
+	local min_distance_creep, min_distance = self:getMinDistanceCreep(false)
+
+	local minHp_creep, minHp = self.getMinHpCreep()
+
+	if(min_distance == 1800)then -- no creeps
+		return -1.5 , -1.5;
+	else
+		local minHealthNormalize = normalize(minHp, 0, minHp_creep:GetMaxHealth())
+		return minHealthNormalize, truePosition( minHp_creep ), truePosition(min_distance_creep)
+	end 
+
+end
+
+function CAddonTemplateGameMode:getMinDistanceCreep(bDistanceHero)
+	local min_distance = 3000;
+	local min_distance_creep = nil;
+
+	for iEnemy,creepEnemy in pairs(creeps_Dire) do
+		if(creepEnemy:IsNull() == false and creepEnemy:IsAlive() )then
+
+			local distance = nil
+			if(bDistanceHero)then
+				distance = CalcDistanceBetweenEntityOBB( hero , creepEnemy)
+			else
+				distance = truePosition(creepEnemy)
+			end
+
+			if( distance < min_distance)then
+				min_distance = distance;
+				min_distance_creep = creepEnemy;
+			end
+		end
+
+	end
+
+	return min_distance_creep, min_distance
+end
+
+function CAddonTemplateGameMode:getCreepTarget(target, group_creep_attack)
+	local result_group = {}
+	local count = 1
+	if target ~= nil then
+		for  key, creep in pairs(group_creep_attack) do
+			if(creep:IsNull() == false and creep:IsAlive() )then
+				if creep:GetAttackTarget() == target then
+					result_group[count] = creep
+					count = count + 1
+				end
+			end
+		end
+	end
+	return result_group
+end
+
+--------- Support Function
+function normalize(value,min,max)
+	return (value - min)/(max - min)
+end
+
+function truePosition(hUnit)
+	distance = CalcDistanceBetweenEntityOBB( midRadianTower , hUnit)
+	distance2 = CalcDistanceBetweenEntityOBB( mid3RadianTower , hUnit)
+	-- print("distance "..distance.." max dis"..maxDistance)
+	disNormalize = normalize(distance , 0 , maxDistance)
+	if(distance2 > distanceBetweenRadianTower)then -- outer tower
+		return disNormalize
+	else
+		return -disNormalize -- inner tower
+	end
+end
+
+
+----------
