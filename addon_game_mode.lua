@@ -5,8 +5,18 @@ local table_print = require("lua/lua/table_print")
 -- local sort_table = require("lua/lua/sort_table")
 DQN = require("lua/lua/dqn")
 
-
+if CAddonTemplateGameMode == nil then
+	CAddonTemplateGameMode = class({})
+end
 -------------  Global Variable
+
+-- action state
+IDLE_ACTION_STATE = 1
+FORWARD_ACTION_STATE = 2 
+BACKWARD_ACTION_STATE = 3
+LASTHIT_ACTION_STATE = 4
+DENY_ACTION_STATE = 5
+
 -- server state
 GET_MODEL_STATE = 20
 UPPDATE_MODEL_STATE = 21
@@ -19,13 +29,15 @@ lasthit_reward_weight = 5
 decrease_episode_reward = -1
 
 name_hero = "npc_dota_hero_sniper" 
+dqn_agent = nil
+
+
+state_action = 1
 
 
 -- Generated from template
 
-if CAddonTemplateGameMode == nil then
-	CAddonTemplateGameMode = class({})
-end
+
 
 function Precache( context )
 
@@ -109,7 +121,7 @@ end
 ---------- Connect Server Function
 function CAddonTemplateGameMode:requestActionFromServer(method, input)
 	input = input or {}
-
+	print("in server")
 	local dataSend = {}
 	dataSend['method'] = method
 
@@ -199,6 +211,7 @@ old_last_hit = 0
 rewardEpisode = 0
 episode_last_hit = 0
 countEpisode = 0
+resetEpisodeReward = 0
 
 function CAddonTemplateGameMode:TimeStepAction()
 	
@@ -217,23 +230,38 @@ function CAddonTemplateGameMode:TimeStepAction()
 		self:resetEpisode()
 	else
 		local diff = state[2] - state[3] -- creep - hero
+		local predict_table = {}
+		------- force action
 		if( diff > 0.25)then
 			state_action = FORWARD_ACTION_STATE
 
 		elseif( diff <= 0)then
 			state_action = BACKWARD_ACTION_STATE
-		else
-			state_action, predict_table = dqn_agent:act(state)
-			if state[1] == -1 and state[4] == -1 then
-				print("---------")
-				if predict_table ~= nil then
-					table_print.loop_print(predict_table)
-				end
-				print("++++++++")
-			end		
-		end	
+
 		
-		GameRules:GetGameModeEntity():SetThink( "runAction", self )
+		else 
+			--------- dqn action
+			state_action, predict_table = dqn_agent:act(state)
+			print("predict :"..state_action)
+			if state[1] < 0.07 then
+				state_action = LASTHIT_ACTION_STATE	
+			end
+		end	
+
+		if state[1] < 0.2 then
+			print("---------")
+			if predict_table ~= nil then
+				table_print.loop_print(predict_table)
+				print("state: ")
+				table_print.loop_print(state)
+			else
+				print("null")
+			end
+			print("++++++++")
+		end
+		
+		-- GameRules:GetGameModeEntity():SetThink( "runAction", self )
+		self:runAction()
 		old_state = dqn_agent:shallowcopy(state)
 
 		return 0.2
@@ -292,7 +320,7 @@ function CAddonTemplateGameMode:checkDone()
 	return false
 end
 
-function CAddonTemplateGameMode:calculateReward(state, state_action)
+function CAddonTemplateGameMode:calculateReward(state)
 
 	min_distance_creep, min_distance = self:getMinDistanceCreep(false)
 	distance = CalcDistanceBetweenEntityOBB(min_distance_creep,hero);
@@ -314,12 +342,12 @@ end
 
 function CAddonTemplateGameMode:resetEpisode()	
 		
-	print(rewardEpisode)
+	print("reward Episode: "..rewardEpisode)
 	rewardEpisode = 0
 	resetEpisodeReward = 0
 
 	countEpisode = countEpisode + 1
-	print(countEpisode)
+	print("number episode: "..countEpisode)
 
 
 	self:ForceKillCreep(creeps_Radian)
@@ -350,7 +378,54 @@ function CAddonTemplateGameMode:callRe()
 	GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self )
 end
 
+function CAddonTemplateGameMode:doStop2()
+	if(state_action == IDLE_ACTION_STATE)then
+		-- print("dostop")
+		hero:Stop()
+		GameRules:GetGameModeEntity():SetThink( "doStop", self , 0.1 )
+	end
+end
 
+function CAddonTemplateGameMode:doStop()
+	if(state_action == IDLE_ACTION_STATE)then
+		-- print("dostop")
+		hero:Stop()
+		GameRules:GetGameModeEntity():SetThink( "doStop2", self , 0.1 )
+	end
+end
+
+function CAddonTemplateGameMode:runAction()	
+	-- print("action :"..state_action)
+	if(state_action == IDLE_ACTION_STATE)then
+		-- print("IDLE")
+		GameRules:GetGameModeEntity():SetThink( "doStop", self )
+		GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self , 0.2)
+	elseif(state_action == FORWARD_ACTION_STATE)then
+		-- print("FORWARD")
+		hero:Stop()
+		hero:MoveToNPC(midDireTower)
+		GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self , 0.2)
+	elseif(state_action == BACKWARD_ACTION_STATE)then
+		-- print("BACKWARD")
+		hero:Stop()
+		hero:MoveToNPC(mid3RadianTower)
+		GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self , 0.2)
+		-- print("dddd")
+	elseif(state_action == LASTHIT_ACTION_STATE)then
+		-- print("LASTHIT")
+		minHp_creep, minHp = self:getMinHpCreep()
+		hero:Stop()
+		hero:MoveToTargetToAttack(minHp_creep)
+		GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self , 0.5)
+
+	elseif(state_action == DENY_ACTION_STATE)then 
+		-- print("DENY")
+		minHp_creep, minHp = self:getMinHpCreep(creeps_Radian)
+		hero:Stop()
+		hero:MoveToTargetToAttack(minHp_creep)
+		GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self , 0.4)
+	end
+end
 
 
 ------- Event Function
@@ -373,7 +448,8 @@ function CAddonTemplateGameMode:OnEntity_kill(event)
 end
 
 function CAddonTemplateGameMode:OnInitial()
-	GameRules:GetGameModeEntity():SetThink( "InitialValue", self ,2)
+	-- GameRules:GetGameModeEntity():SetThink( "InitialValue", self ,2)
+	self:InitialValue()
 	GameRules:GetGameModeEntity():SetThink( "HealthTower", self , 5)
 	print("init")
 end
@@ -412,7 +488,7 @@ function CAddonTemplateGameMode:CreateCreep()
 end
 
 function CAddonTemplateGameMode:ForceKillCreep(creeps)
-	print(#creeps)
+	print("kill creep")
 	if #creeps > 0 then
 		for i = 1,#creeps do 
 			if(creeps[i] ~= nil and creeps[i]:IsNull() == false and creeps[i]:IsAlive() )then

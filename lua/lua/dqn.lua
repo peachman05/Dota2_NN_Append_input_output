@@ -63,7 +63,7 @@ function DQN.act(self, state)
 		action = max_i
 		-- print("id output :")
 		-- print(output)
-
+		-- table_print.loop_print(output)
         return action, output
 	end
     
