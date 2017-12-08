@@ -25,8 +25,8 @@ GET_WEIGHT = 23
 GET_BIAS = 24
 
 --- weight
-lasthit_reward_weight = 5
-decrease_episode_reward = -1
+lasthit_reward_weight = 1
+decrease_episode_reward = 0
 
 name_hero = "npc_dota_hero_sniper"
 dqn_agent = nil
@@ -80,7 +80,7 @@ function CAddonTemplateGameMode:InitialValue()
 	-- hero = CreateUnitByName( "npc_dota_hero_sniper" , goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )
 	hero = Entities:FindByName(nil, name_hero)
 	attackRangeHero = hero:GetAttackRange()
-	PlayerResource:SetCameraTarget(0, hero)
+	-- PlayerResource:SetCameraTarget(0, hero)
 
 	--------- get tower
 	midRadianTower = Entities:FindByName (nil, "dota_goodguys_tower1_mid")
@@ -233,22 +233,23 @@ else
 	local diff = state[2] - state[3] -- creep - hero
 	local predict_table = {}
 	------- force action
-	if( diff > 0.25)then
-		state_action = FORWARD_ACTION_STATE
+	-- if( diff > 0.25)then
+		-- state_action = FORWARD_ACTION_STATE
 
-	elseif( diff <= 0)then
-		state_action = BACKWARD_ACTION_STATE
+	-- elseif( diff <= 0)then
+		-- state_action = BACKWARD_ACTION_STATE
 
 
-	else
+	-- else
 		--------- dqn action
 		state_action, predict_table = dqn_agent:act(state)
 		-- print("predict :"..state_action)
+		
 		if state[1] < 0.07 then
 			-- state_action = LASTHIT_ACTION_STATE
 		end
-	end
-
+	-- end
+	-- table_print.loop_print(predict_table)
 	if state[1] < 0.2 then
 		print("---------")
 		if predict_table ~= nil then
@@ -280,7 +281,7 @@ if minHp_creep == nil then
 	stateArray[1] = -1
 	stateArray[2] = -1
 else
-	stateArray[1] = normalize(minHp, 0, minHp_creep:GetMaxHealth() ) * 2
+	stateArray[1] = normalize(minHp, 0, minHp_creep:GetMaxHealth() )
 	stateArray[2] = truePosition(minHp_creep)
 end
 
@@ -414,9 +415,14 @@ elseif(state_action == BACKWARD_ACTION_STATE)then
 	-- print("dddd")
 elseif(state_action == LASTHIT_ACTION_STATE)then
 	-- print("LASTHIT")
-	minHp_creep, minHp = self:getMinHpCreep()
+	local minHp_creep, minHp = self:getMinHpCreep()
 	hero:Stop()
-	hero:MoveToTargetToAttack(minHp_creep)
+	
+	local distance = CalcDistanceBetweenEntityOBB(minHp_creep, hero);
+	if( distance <= attackRangeHero )then
+		hero:MoveToTargetToAttack(minHp_creep)
+	end
+
 	GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self, 0.5)
 
 elseif(state_action == DENY_ACTION_STATE)then
