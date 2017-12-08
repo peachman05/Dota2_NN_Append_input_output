@@ -24,12 +24,12 @@ app = Flask(__name__)
 
 num_input = 3
 num_output = 4
-list_hidden = [4, 10]
+list_hidden = [20, 20, 20]
 
 num_input_append = 1
 num_output_append = 1
 
-pathSaveFile = "obj_dqn/dqn_lasthit_02.model"
+pathSaveFile = "obj_dqn/dqn_lasthit_03.model"
 pathAppend = "obj_dqn/dqn_03.model"
 
 dqn_save = None

@@ -219,6 +219,7 @@ local state = self:getState()
 local done = self:checkDone()
 local reward = self:calculateReward()
 
+-- print(reward)
 rewardEpisode = rewardEpisode + reward
 if #old_state ~= 0 then
 	dqn_agent:remember( {old_state, state, state_action, reward} )
@@ -252,8 +253,8 @@ else
 		print("---------")
 		if predict_table ~= nil then
 			table_print.loop_print(predict_table)
-			print("state: ")
-			table_print.loop_print(state)
+			-- print("state: ")\
+			-- table_print.loop_print(state)
 		else
 			print("null")
 		end
@@ -279,7 +280,7 @@ if minHp_creep == nil then
 	stateArray[1] = -1
 	stateArray[2] = -1
 else
-	stateArray[1] = normalize(minHp, 0, minHp_creep:GetMaxHealth() )
+	stateArray[1] = normalize(minHp, 0, minHp_creep:GetMaxHealth() ) * 2
 	stateArray[2] = truePosition(minHp_creep)
 end
 
@@ -313,7 +314,7 @@ end
 
 ------------ When Hero is going to die, Reset the episode
 if hero:GetHealth() < 50 then
-	resetEpisodeReward = -50
+	resetEpisodeReward = 0
 	return true
 end
 
@@ -461,11 +462,11 @@ function CAddonTemplateGameMode:CreateCreep()
 local goodSpawn_Radian = midRadianTower
 local goodWP_Radian = Entities:FindByName ( nil, "lane_mid_pathcorner_goodguys_1")
 creeps_Radian = {}
-for i = 1, 2 do
+for i = 1, 3 do
 	creeps_Radian[i] = CreateUnitByName( "npc_dota_creep_goodguys_melee", goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )
 end
--- creeps_Radian[4] = CreateUnitByName( "npc_dota_creep_goodguys_ranged" , goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )
-for i = 1, 2 do
+creeps_Radian[4] = CreateUnitByName( "npc_dota_creep_goodguys_ranged" , goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )
+for i = 1, 4 do
 	creeps_Radian[i]:SetInitialGoalEntity( goodWP_Radian )
 end
 
@@ -474,13 +475,13 @@ end
 local goodSpawn_Dire = midDireTower
 local goodWP_Dire = Entities:FindByName ( nil, "lane_mid_pathcorner_badguys_1")
 creeps_Dire = {}
-for i = 1, 1 do
+for i = 1, 3 do
 	creeps_Dire[i] = CreateUnitByName( "npc_dota_creep_goodguys_melee", goodSpawn_Dire:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_BADGUYS )
 
 end
--- creeps_Dire[4] = CreateUnitByName( "npc_dota_creep_goodguys_ranged" , goodSpawn_Dire:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_BADGUYS )
+creeps_Dire[4] = CreateUnitByName( "npc_dota_creep_goodguys_ranged" , goodSpawn_Dire:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_BADGUYS )
 local randomNum = RandomInt(1, 10)
-for i = 1, 1 do
+for i = 1, 4 do
 	creeps_Dire[i]:SetInitialGoalEntity( goodWP_Dire )
 	-- creeps_Dire[i]:SetForceAttackTarget(hero)
 end
