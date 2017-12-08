@@ -242,9 +242,9 @@ else
 	else
 		--------- dqn action
 		state_action, predict_table = dqn_agent:act(state)
-		print("predict :"..state_action)
+		-- print("predict :"..state_action)
 		if state[1] < 0.07 then
-			state_action = LASTHIT_ACTION_STATE
+			-- state_action = LASTHIT_ACTION_STATE
 		end
 	end
 

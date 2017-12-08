@@ -133,6 +133,9 @@ class DQN:
         #     return
 
         # samples = random.sample(self.memory, batch_size)
+        list_state = []
+        list_target = []
+
         samples = random.sample(self.memory, len(self.memory))
         print("replay")
         for indx, sample in enumerate(samples):
@@ -147,11 +150,15 @@ class DQN:
             Q_future = max(self.target_model.predict(new_state)[0])
             target[0][action - 1] = reward + Q_future * self.gamma
 
-            self.model.fit(state, target, epochs=1, verbose=0)
+            list_state.append(state[0].tolist() )
+            list_target.append(target[0].tolist() )
+
+            # self.model.fit(state, target, epochs=1, verbose=0)
             # print("round "+str(indx))
 
             # print(str(target[0][action]))
-            # print(self.model.fit(state, target, epochs=1, verbose=0).history)
+            
+        print(self.model.fit(list_state, list_target, nb_epoch=10,batch_size=32, verbose=0 ).history)
         print("----------")
         self.memory.clear()
 

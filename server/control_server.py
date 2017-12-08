@@ -34,8 +34,8 @@ def runControl(dqn_agent, data, pathSaveFile):
     elif data['method'] == GET_WEIGHT:
         layer = data['layer']
         row = data['row']
-        print(str(layer) + " " + str(row))
-        print(dqn_agent)
+        # print(str(layer) + " " + str(row))
+        # print(dqn_agent)
         # use lua indexing (start with 1 )
         weight_layer = dqn_agent.model.layers[layer - 1].get_weights()
         weight_dict = {}

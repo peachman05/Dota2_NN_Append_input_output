@@ -13,9 +13,9 @@ from dqn_append import DQN
 from flask import Flask, jsonify, redirect, request, url_for
 from keras.models import load_model
 
-# import logging
-# log = logging.getLogger('werkzeug')
-# log.setLevel(logging.ERROR)
+import logging
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 
 
