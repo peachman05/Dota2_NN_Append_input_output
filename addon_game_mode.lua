@@ -30,6 +30,7 @@ decrease_episode_reward = 0
 
 name_hero = "npc_dota_hero_sniper"
 dqn_agent = nil
+hero_list = {} -- GOODGUY(2),BADGUY(3)
 
 
 state_action = 1
@@ -61,6 +62,8 @@ function CAddonTemplateGameMode:InitGameMode()
 	GameRules:GetGameModeEntity():SetCustomGameForceHero(name_hero)
 	GameRules:GetGameModeEntity():SetFixedRespawnTime(1)
 
+	CreateUnitByName( name_hero ,  RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_BADGUYS )
+
 	----------- Set control creep
 	SendToServerConsole( "dota_creeps_no_spawning  1" )
 	SendToServerConsole( "dota_all_vision 1" )
@@ -70,17 +73,14 @@ function CAddonTemplateGameMode:InitGameMode()
 	ListenToGameEvent( "entity_killed", Dynamic_Wrap( CAddonTemplateGameMode, 'OnEntity_kill' ), self )
 	ListenToGameEvent( "player_chat", Dynamic_Wrap( CAddonTemplateGameMode, 'OnInitial' ), self ) ---- when player chat the game will reset
 
+
 end
 
 ---------- Call From InitGameMode
 
 function CAddonTemplateGameMode:InitialValue()
 
-	--------- Hero Find
-	-- hero = CreateUnitByName( "npc_dota_hero_sniper" , goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )
-	hero = Entities:FindByName(nil, name_hero)
-	attackRangeHero = hero:GetAttackRange()
-	-- PlayerResource:SetCameraTarget(0, hero)
+	
 
 	--------- get tower
 	midRadianTower = Entities:FindByName (nil, "dota_goodguys_tower1_mid")
@@ -96,6 +96,22 @@ function CAddonTemplateGameMode:InitialValue()
 	mid3RadianTower = Entities:FindByName (nil, "dota_goodguys_tower3_mid")
 
 	midDireTower = Entities:FindByName (nil, "dota_badguys_tower1_mid")
+
+	--------- Hero Find
+	hero = Entities:FindByName(nil, name_hero)	
+	allHero =  Entities:FindAllByName(name_hero)
+	for idx,hero in pairs( allHero ) do
+		if hero:GetTeam() == DOTA_TEAM_GOODGUYS then
+			hero_list[1] = hero
+		else	
+			hero_list[2] = hero
+		end
+	end
+
+	--------- Hero Properties	
+	attackRangeHero = hero:GetAttackRange()
+	-- PlayerResource:SetCameraTarget(0, hero)
+	
 
 	distanceBetweenRadianTower = CalcDistanceBetweenEntityOBB( midRadianTower, mid3RadianTower)
 	maxDistance = CalcDistanceBetweenEntityOBB( midRadianTower, midDireTower)
@@ -212,6 +228,7 @@ rewardEpisode = 0
 episode_last_hit = 0
 countEpisode = 0
 resetEpisodeReward = 0
+can_run_step = true
 
 function CAddonTemplateGameMode:TimeStepAction()
 
@@ -269,6 +286,14 @@ function CAddonTemplateGameMode:TimeStepAction()
 		return 0.2
 	end
 
+end
+
+
+
+function CAddonTemplateGameMode:resetEpisode2()
+	self:requestActionFromServer(UPPDATE_MODEL_STATE)
+	self:resetThing() 
+	can_run_step = true
 end
 
 function CAddonTemplateGameMode:getState()
@@ -449,7 +474,12 @@ function CAddonTemplateGameMode:OnEntity_kill(event)
 
 	if(killed:GetName() == name_hero )then
 		rewardDie = 0
-		GameRules:GetGameModeEntity():SetThink( "resetEpisode", self )
+
+		killed:GetTeam() 
+
+		can_run_step = false
+		self:resetEpisode2()
+
 	end
 
 end
@@ -457,11 +487,17 @@ end
 function CAddonTemplateGameMode:OnInitial()
 	-- GameRules:GetGameModeEntity():SetThink( "InitialValue", self ,2)
 	self:InitialValue()
-	GameRules:GetGameModeEntity():SetThink( "HealthTower", self, 5)
+	-- GameRules:GetGameModeEntity():SetThink( "HealthTower", self, 5)
+	GameRules:GetGameModeEntity():SetThink( "SpawnCreep", self, 5)
 	print("init")
 end
 
 --------- Creep Function
+function CAddonTemplateGameMode:SpawnCreep()
+	self:CreateCreep()
+	return 30
+end
+
 function CAddonTemplateGameMode:CreateCreep()
 
 	--------------- Create Radian Creep
