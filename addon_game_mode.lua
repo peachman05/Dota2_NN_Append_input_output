@@ -290,10 +290,38 @@ end
 
 
 
-function CAddonTemplateGameMode:resetEpisode2()
+function CAddonTemplateGameMode:resetEpisode2()	
+	can_run_step = false
+
+	self:ForceKillCreep(creeps_Radian)
+	self:ForceKillCreep(creeps_Dire)
+
 	self:requestActionFromServer(UPPDATE_MODEL_STATE)
 	self:resetThing() 
+
+	old_state[1] = self:getState(1)
+	old_state[2] = self:getState(2)
+
+	GameRules:GetGameModeEntity():SetThink( "runAgent1", self )
+	-- GameRules:GetGameModeEntity():SetThink( "runAgent2", self )
+	
 	can_run_step = true
+end
+
+function CAddonTemplateGameMode:runAgent1()	
+	if can_run_step then
+		self:controlAgent(1)
+		return 0.01
+	end
+	return nil	
+end
+
+function CAddonTemplateGameMode:controlAgent(num_hero)
+	local predict_table = {}	
+	local action, predict_table = dqn_agent:act(old_state[num_hero])
+	local new_state, reward, done = self:runEnvironment(num_hero, action)	
+	dqn_agent:remember( {old_state[num_hero], new_state, action, reward, done} )
+	old_state[num_hero] = new_state
 end
 
 function CAddonTemplateGameMode:getState()
@@ -421,7 +449,7 @@ function CAddonTemplateGameMode:doStop()
 	end
 end
 
-function CAddonTemplateGameMode:runAction()
+function CAddonTemplateGameMode:runEnvironment(num_hero, action)
 	-- print("action :"..state_action)
 	if(state_action == IDLE_ACTION_STATE)then
 		-- print("IDLE")
@@ -477,7 +505,6 @@ function CAddonTemplateGameMode:OnEntity_kill(event)
 
 		killed:GetTeam() 
 
-		can_run_step = false
 		self:resetEpisode2()
 
 	end
@@ -485,7 +512,6 @@ function CAddonTemplateGameMode:OnEntity_kill(event)
 end
 
 function CAddonTemplateGameMode:OnInitial()
-	-- GameRules:GetGameModeEntity():SetThink( "InitialValue", self ,2)
 	self:InitialValue()
 	-- GameRules:GetGameModeEntity():SetThink( "HealthTower", self, 5)
 	GameRules:GetGameModeEntity():SetThink( "SpawnCreep", self, 5)
