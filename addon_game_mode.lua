@@ -229,7 +229,7 @@ end
 ---------- State Control Function
 old_state = {}
 kill_score = {0,0}
-old_last_hit = 0
+old_last_hit = {0,0}
 rewardEpisode = 0
 episode_last_hit = 0
 countEpisode = 0
@@ -304,6 +304,7 @@ function CAddonTemplateGameMode:resetEpisode2()
 	self:requestActionFromServer(UPPDATE_MODEL_STATE)
 	self:resetThing() 
 	kill_score = {0,0}
+	old_last_hit = {0,0}
 
 	old_state[1] = self:getState(1)
 	old_state[2] = self:getState(2)
@@ -330,10 +331,16 @@ function CAddonTemplateGameMode:controlAgent(num_hero)
 	old_state[num_hero] = new_state
 end
 
-function CAddonTemplateGameMode:getState()
-
-	local minHp_creep, minHp = self:getMinHpCreep()
-	local posiHero = truePosition(hero)
+function CAddonTemplateGameMode:getState(num_hero)
+	local creeps = {}
+	if num_hero == 1 then
+		creeps = creeps_Dire
+	else
+		creeps = creeps_Radian
+	end
+	
+	local minHp_creep, minHp = self:getMinHpCreep(creeps)
+	local posiHero = truePosition(hero_list[num_hero])
 	local stateArray = {}
 
 	if minHp_creep == nil then
@@ -383,14 +390,14 @@ end
 
 function CAddonTemplateGameMode:calculateReward(num_hero)
 
-	min_distance_creep, min_distance = self:getMinDistanceCreep(false)
-	distance = CalcDistanceBetweenEntityOBB(min_distance_creep, hero);
-	rewardAttackRange = 0
-	if( distance >= attackRangeHero + 300)then
-		rewardAttackRange = -1
-	else
-		rewardAttackRange = 1
-	end
+	-- min_distance_creep, min_distance = self:getMinDistanceCreep(false)
+	-- distance = CalcDistanceBetweenEntityOBB(min_distance_creep, hero);
+	-- rewardAttackRange = 0
+	-- if( distance >= attackRangeHero + 300)then
+	-- 	rewardAttackRange = -1
+	-- else
+	-- 	rewardAttackRange = 1
+	-- end
 	return kill_score[num_hero] * kill_reward_weight + old_last_hit[num_hero] * lasthit_reward_weight 
 
 end
@@ -456,7 +463,7 @@ function CAddonTemplateGameMode:runEnvironment(num_hero, action)
 		GameRules:GetGameModeEntity():SetThink( "doStop", self )
 		sleep(0.2)
 		local reward = self:calculateReward(num_hero)
-		local done = ~can_run_step
+		local done = not can_run_step
 		return self:getState(num_hero), reward, done
 
 	elseif(state_action == FORWARD_ACTION_STATE)then
@@ -500,8 +507,8 @@ function CAddonTemplateGameMode:OnEntity_kill(event)
 	local damage = event.damagebits
 
 	if(attaker:GetName() == name_hero )then
-		old_last_hit = old_last_hit + 1
-		episode_last_hit = episode_last_hit + old_last_hit
+		old_last_hit[attaker:GetTeam()-1] = 1
+		episode_last_hit = episode_last_hit + 1
 	end
 
 	if(killed:GetName() == name_hero )then
