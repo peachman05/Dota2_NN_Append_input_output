@@ -46,7 +46,7 @@ function DQN.act(self, state)
 		local output = self:FC(input_next_layer, self.weight_array[self.total_weight_layer], self.bias_array[self.total_weight_layer])
 
 		if output == nil then
-			-- print("print nulllllllll")
+			print("print nulllllllll")
 			-- table_print.loop_print(input_next_layer)
 		end
 

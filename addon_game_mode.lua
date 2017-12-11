@@ -25,8 +25,8 @@ GET_WEIGHT = 23
 GET_BIAS = 24
 
 --- weight
-lasthit_reward_weight = 1
-kill_reward_weight = 10
+lasthit_reward_weight = 5
+kill_reward_weight = 20
 decrease_episode_reward = 0
 
 name_hero = "npc_dota_hero_sniper"
@@ -117,20 +117,12 @@ function CAddonTemplateGameMode:InitialValue()
 	distanceBetweenRadianTower = CalcDistanceBetweenEntityOBB( midRadianTower, mid3RadianTower)
 	maxDistance = CalcDistanceBetweenEntityOBB( midRadianTower, midDireTower)
 
-	----------- set respawn position (must set every time before respawn)
-	-- hero_list[1]:SetRespawnPosition(midRadianTower:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 )) )
-	-- hero_list[2]:SetRespawnPosition(midRadianTower:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 )) )
-	-- SendToServerConsole("dota_dev hero_respawn")
+	----------- respawn
 	self:resetThing()
-	
-	-- co = coroutine.create(function ()
-	-- 	print("hi")
-	--   end)
 
-	-- print(co)
-	-- coroutine.resume(co)
 	
 	GameRules:GetGameModeEntity():SetThink( "SpawnCreep", self)
+	GameRules:GetGameModeEntity():SetThink( "CheckTower", self)
 	self:requestActionFromServer(GET_DQN_DETAIL)
 	
 	print("Finish Reset ")
@@ -138,12 +130,26 @@ function CAddonTemplateGameMode:InitialValue()
 	return nil
 end
 
-function CAddonTemplateGameMode:HealthTower()
+function CAddonTemplateGameMode:CheckTower()
+	radian_HP = midRadianTower:GetHealth()
+	dire_HP = midDireTower:GetHealth()
+	if radian_HP < 100 then
+		midRadianTower:SetHealth( midRadianTower:GetMaxHealth() );
+		kill_score[1] = -1
+		kill_score[2] = 1	
+		can_run_step = false
+		GameRules:GetGameModeEntity():SetThink( "resetEpisode2", self, 1)
 
-	midRadianTower:SetHealth( midRadianTower:GetMaxHealth() );
-	midDireTower:SetHealth( midDireTower:GetMaxHealth() );
-	-- print("HealthTower")
-	return 5
+	elseif dire_HP < 100 then
+		midDireTower:SetHealth( midDireTower:GetMaxHealth() )
+		kill_score[1] = 1
+		kill_score[2] = -1
+		can_run_step = false
+		GameRules:GetGameModeEntity():SetThink( "resetEpisode2", self, 1)
+
+	end
+
+	return 10
 end
 
 ---------- Connect Server Function
@@ -204,8 +210,9 @@ function CAddonTemplateGameMode:requestActionFromServer(method, input)
 
 				
 				old_state[1] = self:getState(1)
-				-- old_state[2] = self:getState(2)
+				old_state[2] = self:getState(2)
 				GameRules:GetGameModeEntity():SetThink( "runAgent1", self )
+				GameRules:GetGameModeEntity():SetThink( "runAgent2", self )
 			end
 
 		elseif dataSend['method'] == UPPDATE_MODEL_STATE then
@@ -243,7 +250,7 @@ keep_state = {}
 kill_score = {0,0}
 action = {0,0}
 old_last_hit = {0,0}
-rewardEpisode = 0
+rewardEpisode = {0,0}
 episode_last_hit = 0
 countEpisode = 0
 resetEpisodeReward = 0
@@ -257,8 +264,13 @@ function CAddonTemplateGameMode:resetEpisode2()
 
 	self:requestActionFromServer(UPPDATE_MODEL_STATE)
 	self:resetThing()
+
+	
+	print("reward Episode: "..rewardEpisode[1].." "..rewardEpisode[2])
+
 	kill_score = {0,0}
 	old_last_hit = {0,0}
+	rewardEpisode = {0,0}
 
 	old_state[1] = self:getState(1)
 	old_state[2] = self:getState(2)
@@ -270,25 +282,35 @@ function CAddonTemplateGameMode:resetEpisode2()
 end
 
 function CAddonTemplateGameMode:runAgent1()	
+	self:runAgentHero(1)
+end
+
+function CAddonTemplateGameMode:runAgent2()	
+	self:runAgentHero(2)
+end
+
+function CAddonTemplateGameMode:runAgentHero(num_hero)
 	if can_run_step then
 		local predict_table = {}	
-		action[1], predict_table = dqn_agent:act(old_state[1])
+		action[num_hero], predict_table = dqn_agent:act(old_state[num_hero])
 
-		-- print("++++++")
-		-- table_print.loop_print( old_state[1] )
-		-- if predict_table ~= nil then
-		-- 	print("******")
-		-- 	table_print.loop_print( predict_table)
-		-- end
+		if num_hero == 2 then
+			print("++++++")
+			table_print.loop_print( old_state[num_hero] )
+			if predict_table ~= nil then
+				print("******")
+				table_print.loop_print( predict_table)
+			end
+		end
 
 
-		self:runEnvironment(1, action[1])
+		self:runEnvironment(num_hero, action[num_hero])
 	
 	else 
-		if kill_score[1] ~= 0 then
-			local reward = self:calculateReward(1)
+		if kill_score[num_hero] ~= 0 then
+			local reward = self:calculateReward(num_hero)
 			print("fix")
-			dqn_agent:remember( {keep_state[1], old_state[1], action[1], reward, true} )
+			dqn_agent:remember( {keep_state[num_hero], old_state[num_hero], action[num_hero], reward, true} )
 		end
 	end
 end
@@ -298,10 +320,14 @@ function CAddonTemplateGameMode:update_mem_and_reward1()
 	GameRules:GetGameModeEntity():SetThink( "runAgent1", self )
 end 
 
+function CAddonTemplateGameMode:update_mem_and_reward2()
+	self:update_mem_and_reward(2)
+	GameRules:GetGameModeEntity():SetThink( "runAgent2", self )
+end 
+
 function CAddonTemplateGameMode:update_mem_and_reward(num_hero)
 	-- print("dddddssss")
 	local reward = self:calculateReward(num_hero)
-	kill_score[num_hero] = 0
 	local done = not can_run_step
 	if done then
 		print("----")
@@ -310,8 +336,11 @@ function CAddonTemplateGameMode:update_mem_and_reward(num_hero)
 	end
 	local new_state = self:getState(num_hero)
 	dqn_agent:remember( {old_state[num_hero], new_state, action[num_hero], reward, done} )
+
 	keep_state[num_hero] = old_state[num_hero]
-	old_state[num_hero] = new_state
+	old_state[num_hero] = new_state	
+	kill_score[num_hero] = 0
+	rewardEpisode[num_hero] = rewardEpisode[num_hero] + reward
 end
 
 function CAddonTemplateGameMode:getState(num_hero)
@@ -339,79 +368,34 @@ function CAddonTemplateGameMode:getState(num_hero)
 	return stateArray
 end
 
-function CAddonTemplateGameMode:checkDone()
-	local countCreepDieDire = 0
-	local countCreepDieRadian = 0
-
-	----------- Count die creep number
-	for i = 1, #creeps_Dire do
-		if(creeps_Dire[i]:IsNull() or creeps_Dire[i]:IsAlive() == false )then
-			countCreepDieDire = countCreepDieDire + 1
-		end
-	end
-
-	for i = 1, #creeps_Radian do
-		if(creeps_Radian[i]:IsNull() or creeps_Radian[i]:IsAlive() == false )then
-			countCreepDieRadian = countCreepDieRadian + 1
-		end
-	end
-
-	------------- Reset the episode when all dire creep are die
-	if(countCreepDieDire == #creeps_Dire)then
-		resetEpisodeReward = 0
-		return true
-	end
-
-	------------ When Hero is going to die, Reset the episode
-	if hero:GetHealth() < 50 then
-		resetEpisodeReward = 0
-		return true
-	end
-
-	return false
-end
-
 function CAddonTemplateGameMode:calculateReward(num_hero)
 
-	-- min_distance_creep, min_distance = self:getMinDistanceCreep(false)
-	-- distance = CalcDistanceBetweenEntityOBB(min_distance_creep, hero);
-	-- rewardAttackRange = 0
-	-- if( distance >= attackRangeHero + 300)then
-	-- 	rewardAttackRange = -1
-	-- else
-	-- 	rewardAttackRange = 1
-	-- end
+	local creeps = {}
+	if num_hero == 1 then
+		creeps = creeps_Dire
+	else
+		creeps = creeps_Radian
+	end
 
-	return kill_score[num_hero] * kill_reward_weight + old_last_hit[num_hero] * lasthit_reward_weight 
+	local minHp_creep, minHp = self:getMinHpCreep(creeps)
+	local distance = CalcDistanceBetweenEntityOBB(minHp_creep, hero_list[num_hero]);
+	local rewardAttackRange = 0
+	if( distance >= attackRangeHero + 300)then
+		rewardAttackRange = -1
+	else
+		rewardAttackRange = 1
+	end
+
+	return kill_score[num_hero] * kill_reward_weight + old_last_hit[num_hero] * lasthit_reward_weight + rewardAttackRange
 
 end
-
 
 function CAddonTemplateGameMode:resetThing()
 	--------- Spawn Hero
+	print("resettttt")
 	FindClearSpaceForUnit(hero_list[1], midRadianTower:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 )) , true)
 	FindClearSpaceForUnit(hero_list[2], midDireTower:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 )), true)
 
-end
-
-function CAddonTemplateGameMode:callRe()
-	GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self )
-end
-
-function CAddonTemplateGameMode:doStop2()
-	if(state_action == IDLE_ACTION_STATE)then
-		-- print("dostop")
-		hero:Stop()
-		GameRules:GetGameModeEntity():SetThink( "doStop", self, 0.1 )
-	end
-end
-
-function CAddonTemplateGameMode:doStop()
-	if(state_action == IDLE_ACTION_STATE)then
-		-- print("dostop")
-		hero:Stop()
-		GameRules:GetGameModeEntity():SetThink( "doStop2", self, 0.1 )
-	end
 end
 
 function CAddonTemplateGameMode:runEnvironment(num_hero, action)
@@ -420,41 +404,49 @@ function CAddonTemplateGameMode:runEnvironment(num_hero, action)
 		-- print("IDLE")
 		-- GameRules:GetGameModeEntity():SetThink( "doStop", self )
 		hero_list[num_hero]:Stop()
-		GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.2)
 
 	elseif(action == FORWARD_ACTION_STATE)then
 		-- print("FORWARD")
 		hero_list[num_hero]:Stop()
 		hero:MoveToNPC(midDireTower)
-		GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.2)
 	elseif(action == BACKWARD_ACTION_STATE)then
 		-- print("BACKWARD")
 		hero_list[num_hero]:Stop()
 		hero_list[num_hero]:MoveToNPC(mid3RadianTower)
-		GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.2)
 
 	elseif(action == LASTHIT_ACTION_STATE)then
 		-- print("LASTHIT")
 		local minHp_creep, minHp = self:getMinHpCreep()
 		hero_list[num_hero]:Stop()
 		
-		local distance = CalcDistanceBetweenEntityOBB(minHp_creep, hero);
+		local distance = CalcDistanceBetweenEntityOBB(minHp_creep, hero)
 		if( distance <= attackRangeHero )then
 			hero:MoveToTargetToAttack(minHp_creep)
 		end
 
-		GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.5)
-
-	elseif(action == DENY_ACTION_STATE)then
-		-- print("DENY")
-		minHp_creep, minHp = self:getMinHpCreep(creeps_Radian)
-		hero_list[num_hero]:Stop()
-		hero_list[num_hero]:MoveToTargetToAttack(minHp_creep)
+	-- elseif(action == DENY_ACTION_STATE)then
+	-- 	-- print("DENY")
+	-- 	minHp_creep, minHp = self:getMinHpCreep(creeps_Radian)
+	-- 	hero_list[num_hero]:Stop()
+	-- 	hero_list[num_hero]:MoveToTargetToAttack(minHp_creep)
 		-- GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self, 0.4)
+	end
+
+	if action ~= LASTHIT_ACTION_STATE then
+		if num_hero == 1 then
+			GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.2)
+		else
+			GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward2", self , 0.2)
+		end
+	else
+		if num_hero == 1 then
+			GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.4)
+		else
+			GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward2", self , 0.4)
+		end
 	end
 	
 end
-
 
 ------- Event Function
 
@@ -469,7 +461,6 @@ function CAddonTemplateGameMode:OnEntity_kill(event)
 	end
 
 	if(killed:GetName() == name_hero )then
-		rewardDie = 0
 		if killed:GetTeam() == DOTA_TEAM_GOODGUYS then
 			kill_score[1] = -1
 			kill_score[2] = 1
@@ -481,7 +472,7 @@ function CAddonTemplateGameMode:OnEntity_kill(event)
 			
 		can_run_step = false
 		-- self:resetEpisode2()
-		GameRules:GetGameModeEntity():SetThink( "resetEpisode2", self, 3)
+		GameRules:GetGameModeEntity():SetThink( "resetEpisode2", self, 5)
 
 	end
 
@@ -629,10 +620,7 @@ function CAddonTemplateGameMode:getCreepTarget(target, group_creep_attack)
 end
 
 --------- Support Function
-function sleep(sec)
-	target = GameRules:GetGameTime() + sec
-	while GameRules:GetGameTime() < target do end
-end
+
 
 function normalize(value, min, max)
 	return (value - min) / (max - min)
