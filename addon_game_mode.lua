@@ -195,9 +195,9 @@ function CAddonTemplateGameMode:requestActionFromServer(method, input)
 		elseif dataSend['method'] == GET_BIAS then
 			num_layer = dataSend['layer']
 			dqn_agent.bias_array[num_layer] = dict_value['bias']
-			if num_layer == 1 then
-				table_print.loop_print( dqn_agent.bias_array[num_layer] )
-			end
+			-- if num_layer == 1 then
+			-- 	-- table_print.loop_print( dqn_agent.bias_array[num_layer] )
+			-- end
 			if num_layer == dqn_agent.total_weight_layer then
 				-- self:resetThing()
 				-- GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self, 2)
@@ -223,7 +223,7 @@ end
 
 function CAddonTemplateGameMode:GetDQN_Model()
 	local temp_table = dqn_agent.hidden_layer
-	table_print.loop_print(temp_table)
+	-- table_print.loop_print(temp_table)
 	for layer = 1, #temp_table do
 		for row = 1, temp_table[layer] do
 			self:requestActionFromServer(GET_WEIGHT, {layer, row})
@@ -239,6 +239,7 @@ end
 
 ---------- State Control Function
 old_state = {}
+keep_state = {}
 kill_score = {0,0}
 action = {0,0}
 old_last_hit = {0,0}
@@ -270,10 +271,25 @@ end
 
 function CAddonTemplateGameMode:runAgent1()	
 	if can_run_step then
-		local predict_table = {}
-		-- table_print.loop_print( old_state[1] )
+		local predict_table = {}	
 		action[1], predict_table = dqn_agent:act(old_state[1])
+
+		-- print("++++++")
+		-- table_print.loop_print( old_state[1] )
+		-- if predict_table ~= nil then
+		-- 	print("******")
+		-- 	table_print.loop_print( predict_table)
+		-- end
+
+
 		self:runEnvironment(1, action[1])
+	
+	else 
+		if kill_score[1] ~= 0 then
+			local reward = self:calculateReward(1)
+			print("fix")
+			dqn_agent:remember( {keep_state[1], old_state[1], action[1], reward, true} )
+		end
 	end
 end
 
@@ -285,13 +301,16 @@ end
 function CAddonTemplateGameMode:update_mem_and_reward(num_hero)
 	-- print("dddddssss")
 	local reward = self:calculateReward(num_hero)
+	kill_score[num_hero] = 0
 	local done = not can_run_step
 	if done then
 		print("----")
 		table_print.loop_print( old_state[num_hero] )
+		print(reward)
 	end
 	local new_state = self:getState(num_hero)
 	dqn_agent:remember( {old_state[num_hero], new_state, action[num_hero], reward, done} )
+	keep_state[num_hero] = old_state[num_hero]
 	old_state[num_hero] = new_state
 end
 
@@ -451,8 +470,14 @@ function CAddonTemplateGameMode:OnEntity_kill(event)
 
 	if(killed:GetName() == name_hero )then
 		rewardDie = 0
-
-		kill_score[killed:GetTeam()-1] = 1
+		if killed:GetTeam() == DOTA_TEAM_GOODGUYS then
+			kill_score[1] = -1
+			kill_score[2] = 1
+		else
+			kill_score[1] = 1
+			kill_score[2] = -1
+		end
+		
 			
 		can_run_step = false
 		-- self:resetEpisode2()
@@ -487,7 +512,7 @@ function CAddonTemplateGameMode:CreateCreep()
 	creeps_Radian[4] = CreateUnitByName( "npc_dota_creep_goodguys_ranged" , goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )
 	for i = 1, 4 do
 		creeps_Radian[i]:SetInitialGoalEntity( goodWP_Radian )
-		print(creeps_Radian[i]:GetName())
+		-- print(creeps_Radian[i]:GetName())
 	end
 
 
@@ -524,7 +549,7 @@ function CAddonTemplateGameMode:ForceKillCreep(creeps)
 			creep:ForceKill(false)
 		end
 	end
-	
+
 end
 
 function CAddonTemplateGameMode:getMinHpCreep(creeps)

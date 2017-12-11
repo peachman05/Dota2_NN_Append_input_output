@@ -140,15 +140,19 @@ class DQN:
         print("replay")
         for indx, sample in enumerate(samples):
             # for sample in samples:
-            state, new_state, action, reward, done= sample
+            state, new_state, action, reward, done = sample
 
             state = np.asarray(state).reshape(1, self.num_input)
             new_state = np.asarray(new_state).reshape(1, self.num_input)
 
             target = self.target_model.predict(state)
 
-            Q_future = max(self.target_model.predict(new_state)[0])
-            target[0][action - 1] = reward + Q_future * self.gamma
+            if done:
+                print(state)
+                target[0][action - 1] = reward
+            else:
+                Q_future = max(self.target_model.predict(new_state)[0])
+                target[0][action - 1] = reward + Q_future * self.gamma
 
             list_state.append(state[0].tolist() )
             list_target.append(target[0].tolist() )
