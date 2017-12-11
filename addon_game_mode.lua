@@ -15,7 +15,8 @@ IDLE_ACTION_STATE = 1
 FORWARD_ACTION_STATE = 2
 BACKWARD_ACTION_STATE = 3
 LASTHIT_ACTION_STATE = 4
-DENY_ACTION_STATE = 5
+ATTACK_HERO_ACTION_STATE = 5
+DENY_ACTION_STATE = 6
 
 -- server state
 GET_MODEL_STATE = 20
@@ -25,6 +26,7 @@ GET_WEIGHT = 23
 GET_BIAS = 24
 
 --- weight
+damage_taken_weight = 0.07
 lasthit_reward_weight = 5
 kill_reward_weight = 20
 decrease_episode_reward = 0
@@ -72,6 +74,7 @@ function CAddonTemplateGameMode:InitGameMode()
 
 	----------- Set Event Listener
 	ListenToGameEvent( "entity_killed", Dynamic_Wrap( CAddonTemplateGameMode, 'OnEntity_kill' ), self )
+	ListenToGameEvent( "entity_hurt", Dynamic_Wrap( CAddonTemplateGameMode, 'OnEntity_hurt' ), self )
 	ListenToGameEvent( "player_chat", Dynamic_Wrap( CAddonTemplateGameMode, 'OnInitial' ), self ) ---- when player chat the game will reset
 
 
@@ -247,10 +250,17 @@ end
 ---------- State Control Function
 old_state = {}
 keep_state = {}
-kill_score = {0,0}
-action = {0,0}
-old_last_hit = {0,0}
+
 rewardEpisode = {0,0}
+
+action = {0,0}
+kill_score = {0,0}
+old_last_hit = {0,0}
+damage_taken = {0,0}
+
+mem_temp = {}
+mem_temp[1] = {}
+mem_temp[2] = {}
 episode_last_hit = 0
 countEpisode = 0
 resetEpisodeReward = 0
@@ -262,15 +272,24 @@ function CAddonTemplateGameMode:resetEpisode2()
 	self:ForceKillCreep(creeps_Radian)
 	self:ForceKillCreep(creeps_Dire)
 
+	for i = 1,2 do
+		for idx, each_mem in pairs(mem_temp[i]) do
+			dqn_agent:remember( each_mem )
+			-- table_print.loop_print(each_mem)
+			-- print(#dqn_agent.memory)
+		end			
+	end
+
 	self:requestActionFromServer(UPPDATE_MODEL_STATE)
 	self:resetThing()
 
 	
+	
 	print("reward Episode: "..rewardEpisode[1].." "..rewardEpisode[2])
 
-	kill_score = {0,0}
-	old_last_hit = {0,0}
+
 	rewardEpisode = {0,0}
+	mem_temp = {{},{}}
 
 	old_state[1] = self:getState(1)
 	old_state[2] = self:getState(2)
@@ -295,12 +314,12 @@ function CAddonTemplateGameMode:runAgentHero(num_hero)
 		action[num_hero], predict_table = dqn_agent:act(old_state[num_hero])
 
 		if num_hero == 2 then
-			print("++++++")
-			table_print.loop_print( old_state[num_hero] )
-			if predict_table ~= nil then
-				print("******")
-				table_print.loop_print( predict_table)
-			end
+			-- print("++++++")
+			-- table_print.loop_print( old_state[num_hero] )
+			-- if predict_table ~= nil then
+			-- 	print("******")
+			-- 	table_print.loop_print( predict_table)
+			-- end
 		end
 
 
@@ -327,6 +346,10 @@ end
 
 function CAddonTemplateGameMode:update_mem_and_reward(num_hero)
 	-- print("dddddssss")
+	
+	local new_state = self:getState(num_hero)
+
+    --- calculate reward and reset damage taken and creep lasthit
 	local reward = self:calculateReward(num_hero)
 	local done = not can_run_step
 	if done then
@@ -334,8 +357,12 @@ function CAddonTemplateGameMode:update_mem_and_reward(num_hero)
 		table_print.loop_print( old_state[num_hero] )
 		print(reward)
 	end
-	local new_state = self:getState(num_hero)
-	dqn_agent:remember( {old_state[num_hero], new_state, action[num_hero], reward, done} )
+	
+	local temp = {old_state[num_hero], new_state, action[num_hero], reward, done}
+	table.insert( mem_temp[num_hero] , temp  )
+
+	
+	-- dqn_agent:remember( {old_state[num_hero], new_state, action[num_hero], reward, done} )
 
 	keep_state[num_hero] = old_state[num_hero]
 	old_state[num_hero] = new_state	
@@ -345,25 +372,40 @@ end
 
 function CAddonTemplateGameMode:getState(num_hero)
 	local creeps = {}
+	local hero_temp = {} --1 me, 2 enemy
 	if num_hero == 1 then
 		creeps = creeps_Dire
+		hero_temp[1] = hero_list[1]
+		hero_temp[2] = hero_list[2]
 	else
 		creeps = creeps_Radian
+		hero_temp[1] = hero_list[2]
+		hero_temp[2] = hero_list[1]
 	end
 	
 	local minHp_creep, minHp = self:getMinHpCreep(creeps)
-	local posiHero = truePosition(hero_list[num_hero])
 	local stateArray = {}
 
+	stateArray[1] = num_hero -1 -- team
+	stateArray[2] = truePosition( hero_temp[1] ) -- posiHero
+	stateArray[4] = truePosition( hero_temp[2] ) -- posi enemy
+	stateArray[5] = normalize(hero_temp[1]:GetHealth(), 0, hero_temp[1]:GetMaxHealth() ) -- hp me
+	stateArray[7] = normalize(hero_temp[2]:GetHealth(), 0, hero_temp[2]:GetMaxHealth() ) -- hp enemy
+	stateArray[9] = stateArray[2] - stateArray[4] -- distance to enemy (me - enemy)
+	stateArray[10] =  normalize( damage_taken[num_hero], 0, hero_temp[1]:GetMaxHealth() )   -- damage taken
+
 	if minHp_creep == nil then
-		stateArray[1] = -1
-		stateArray[2] = -1
+		
+		stateArray[3] = -1 -- posi min creep
+		stateArray[6] = -1 -- hp min creep		
+		stateArray[8] = -1 -- distance to creep
+		
 	else
-		stateArray[1] = normalize(minHp, 0, minHp_creep:GetMaxHealth() )
-		stateArray[2] = truePosition(minHp_creep)
+		stateArray[3] = truePosition( minHp_creep ) -- posi min creep
+		stateArray[6] = normalize( minHp_creep:GetHealth(), 0, minHp_creep:GetMaxHealth() ) -- hp min creep		
+		stateArray[8] = stateArray[2] - stateArray[3] -- distance to creep (me - enemy)
 	end
 
-	stateArray[3] = posiHero
 
 	return stateArray
 end
@@ -386,8 +428,14 @@ function CAddonTemplateGameMode:calculateReward(num_hero)
 		rewardAttackRange = 1
 	end
 
-	return kill_score[num_hero] * kill_reward_weight + old_last_hit[num_hero] * lasthit_reward_weight + rewardAttackRange
+	result = kill_score[num_hero]*kill_reward_weight + old_last_hit[num_hero]*lasthit_reward_weight + rewardAttackRange - damage_taken[num_hero]*damage_taken_weight
 
+	kill_score = {0,0}
+	old_last_hit = {0,0}
+	damage_taken = {0,0}
+
+
+	return result
 end
 
 function CAddonTemplateGameMode:resetThing()
@@ -422,6 +470,23 @@ function CAddonTemplateGameMode:runEnvironment(num_hero, action)
 		local distance = CalcDistanceBetweenEntityOBB(minHp_creep, hero)
 		if( distance <= attackRangeHero )then
 			hero:MoveToTargetToAttack(minHp_creep)
+		end
+	elseif(action == ATTACK_HERO_ACTION_STATE)then
+
+		local hero_temp = {} --1 me, 2 enemy
+		if num_hero == 1 then
+			hero_temp[1] = hero_list[1]
+			hero_temp[2] = hero_list[2]
+		else
+			hero_temp[1] = hero_list[2]
+			hero_temp[2] = hero_list[1]
+		end
+
+		hero_temp[1]:Stop()
+
+		local distance = CalcDistanceBetweenEntityOBB(hero_temp[2], hero_temp[1])
+		if( distance <= attackRangeHero )then
+			hero_temp[1]:MoveToTargetToAttack(hero_temp[2])
 		end
 
 	-- elseif(action == DENY_ACTION_STATE)then
@@ -478,12 +543,31 @@ function CAddonTemplateGameMode:OnEntity_kill(event)
 
 end
 
+function CAddonTemplateGameMode:OnEntity_hurt(event)
+	local killed = EntIndexToHScript(event.entindex_killed);
+	local attaker = EntIndexToHScript(event.entindex_attacker );
+	local damage = event.damagebits
+
+	if(killed:GetName() == name_hero )then
+		local damage = attaker:GetAttackDamage()
+		if killed:GetTeam() == DOTA_TEAM_GOODGUYS then
+			damage_taken[1] = damage
+		else
+			damage_taken[2] = damage
+		end
+	end
+
+end
+
 function CAddonTemplateGameMode:OnInitial()
 
 	self:InitialValue()
 	-- GameRules:GetGameModeEntity():SetThink( "HealthTower", self, 5)
 	print("init")
 end
+
+
+
 
 --------- Creep Function
 function CAddonTemplateGameMode:SpawnCreep()

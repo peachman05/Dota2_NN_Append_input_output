@@ -22,8 +22,8 @@ log.setLevel(logging.ERROR)
 
 app = Flask(__name__)
 
-num_input = 3
-num_output = 4
+num_input = 10
+num_output = 5
 list_hidden = [20, 20, 20]
 
 num_input_append = 1
