@@ -121,17 +121,14 @@ function CAddonTemplateGameMode:InitialValue()
 	-- hero_list[1]:SetRespawnPosition(midRadianTower:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 )) )
 	-- hero_list[2]:SetRespawnPosition(midRadianTower:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 )) )
 	-- SendToServerConsole("dota_dev hero_respawn")
+	self:resetThing()
+	
+	-- co = coroutine.create(function ()
+	-- 	print("hi")
+	--   end)
 
-	FindClearSpaceForUnit(hero_list[1], Vector(150,-150,0), true)
-	FindClearSpaceForUnit(hero_list[2], Vector(150,-150,0), true)
-
-	print("dddddddd")
-	co = coroutine.create(function ()
-		print("hi")
-	  end)
-
-	print(co)
-	coroutine.resume(co)
+	-- print(co)
+	-- coroutine.resume(co)
 	
 	GameRules:GetGameModeEntity():SetThink( "SpawnCreep", self)
 	self:requestActionFromServer(GET_DQN_DETAIL)
@@ -207,7 +204,6 @@ function CAddonTemplateGameMode:requestActionFromServer(method, input)
 
 				
 				old_state[1] = self:getState(1)
-				table_print.loop_print(old_state[1])
 				-- old_state[2] = self:getState(2)
 				GameRules:GetGameModeEntity():SetThink( "runAgent1", self )
 			end
@@ -259,7 +255,7 @@ function CAddonTemplateGameMode:resetEpisode2()
 	self:ForceKillCreep(creeps_Dire)
 
 	self:requestActionFromServer(UPPDATE_MODEL_STATE)
-	self:resetThing() 
+	self:resetThing()
 	kill_score = {0,0}
 	old_last_hit = {0,0}
 
@@ -275,7 +271,7 @@ end
 function CAddonTemplateGameMode:runAgent1()	
 	if can_run_step then
 		local predict_table = {}
-		table_print.loop_print(old_state[1])
+		-- table_print.loop_print( old_state[1] )
 		action[1], predict_table = dqn_agent:act(old_state[1])
 		self:runEnvironment(1, action[1])
 	end
@@ -290,6 +286,10 @@ function CAddonTemplateGameMode:update_mem_and_reward(num_hero)
 	-- print("dddddssss")
 	local reward = self:calculateReward(num_hero)
 	local done = not can_run_step
+	if done then
+		print("----")
+		table_print.loop_print( old_state[num_hero] )
+	end
 	local new_state = self:getState(num_hero)
 	dqn_agent:remember( {old_state[num_hero], new_state, action[num_hero], reward, done} )
 	old_state[num_hero] = new_state
@@ -367,37 +367,11 @@ function CAddonTemplateGameMode:calculateReward(num_hero)
 
 end
 
-function CAddonTemplateGameMode:resetEpisode()
-
-	print("reward Episode: "..rewardEpisode)
-	rewardEpisode = 0
-	resetEpisodeReward = 0
-
-	countEpisode = countEpisode + 1
-	print("number episode: "..countEpisode)
-
-
-	self:ForceKillCreep(creeps_Radian)
-	self:ForceKillCreep(creeps_Dire)
-
-	if(countEpisode % 15 == 0)then
-		print("creep kill in episode: "..episode_last_hit)
-		episode_last_hit = 0
-		self:requestActionFromServer(UPPDATE_MODEL_STATE)
-
-	else
-		self:resetThing()
-		GameRules:GetGameModeEntity():SetThink( "callRe", self )
-
-	end
-
-end
 
 function CAddonTemplateGameMode:resetThing()
-	--------- Spawn Creep and Hero
-	self:CreateCreep()
-	hero:SetRespawnPosition(midRadianTower:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 )) )
-	SendToServerConsole("dota_dev hero_respawn")
+	--------- Spawn Hero
+	FindClearSpaceForUnit(hero_list[1], midRadianTower:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 )) , true)
+	FindClearSpaceForUnit(hero_list[2], midDireTower:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 )), true)
 
 end
 
@@ -426,40 +400,40 @@ function CAddonTemplateGameMode:runEnvironment(num_hero, action)
 	if(action == IDLE_ACTION_STATE)then
 		-- print("IDLE")
 		-- GameRules:GetGameModeEntity():SetThink( "doStop", self )
-		hero[num_hero]:Stop()
-		
+		hero_list[num_hero]:Stop()
+		GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.2)
 
 	elseif(action == FORWARD_ACTION_STATE)then
 		-- print("FORWARD")
-		hero:Stop()
+		hero_list[num_hero]:Stop()
 		hero:MoveToNPC(midDireTower)
-		-- GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self, 0.2)
+		GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.2)
 	elseif(action == BACKWARD_ACTION_STATE)then
 		-- print("BACKWARD")
-		hero:Stop()
-		hero:MoveToNPC(mid3RadianTower)
-		-- GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self, 0.2)
-		-- print("dddd")
+		hero_list[num_hero]:Stop()
+		hero_list[num_hero]:MoveToNPC(mid3RadianTower)
+		GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.2)
+
 	elseif(action == LASTHIT_ACTION_STATE)then
 		-- print("LASTHIT")
 		local minHp_creep, minHp = self:getMinHpCreep()
-		hero:Stop()
+		hero_list[num_hero]:Stop()
 		
 		local distance = CalcDistanceBetweenEntityOBB(minHp_creep, hero);
 		if( distance <= attackRangeHero )then
 			hero:MoveToTargetToAttack(minHp_creep)
 		end
 
-		-- GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self, 0.5)
+		GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.5)
 
 	elseif(action == DENY_ACTION_STATE)then
 		-- print("DENY")
 		minHp_creep, minHp = self:getMinHpCreep(creeps_Radian)
-		hero:Stop()
-		hero:MoveToTargetToAttack(minHp_creep)
+		hero_list[num_hero]:Stop()
+		hero_list[num_hero]:MoveToTargetToAttack(minHp_creep)
 		-- GameRules:GetGameModeEntity():SetThink( "TimeStepAction", self, 0.4)
 	end
-	GameRules:GetGameModeEntity():SetThink( "update_mem_and_reward1", self , 0.2)
+	
 end
 
 
@@ -513,6 +487,7 @@ function CAddonTemplateGameMode:CreateCreep()
 	creeps_Radian[4] = CreateUnitByName( "npc_dota_creep_goodguys_ranged" , goodSpawn_Radian:GetAbsOrigin() + RandomVector( RandomFloat( 0, 200 ) ), true, nil, nil, DOTA_TEAM_GOODGUYS )
 	for i = 1, 4 do
 		creeps_Radian[i]:SetInitialGoalEntity( goodWP_Radian )
+		print(creeps_Radian[i]:GetName())
 	end
 
 
@@ -534,14 +509,22 @@ function CAddonTemplateGameMode:CreateCreep()
 end
 
 function CAddonTemplateGameMode:ForceKillCreep(creeps)
-	print("kill creep")
-	if #creeps > 0 then
-		for i = 1, #creeps do
-			if(creeps[i] ~= nil and creeps[i]:IsNull() == false and creeps[i]:IsAlive() )then
-				creeps[i]:ForceKill(false)
-			end
+	-- print("kill creep")
+	-- if #creeps > 0 then
+	-- 	for i = 1, #creeps do
+	-- 		if(creeps[i] ~= nil and creeps[i]:IsNull() == false and creeps[i]:IsAlive() )then
+	-- 			creeps[i]:ForceKill(false)
+	-- 		end
+	-- 	end
+	-- end
+	allCreeps =  Entities:FindAllByName("npc_dota_creep_lane")
+	for idx,creep in pairs( allCreeps ) do
+		-- print(creep:GetName())
+		if(creep ~= nil and creep:IsNull() == false and creep:IsAlive() )then
+			creep:ForceKill(false)
 		end
 	end
+	
 end
 
 function CAddonTemplateGameMode:getMinHpCreep(creeps)
