@@ -140,7 +140,7 @@ class DQN:
         print("replay")
         for indx, sample in enumerate(samples):
             # for sample in samples:
-            state, new_state, action, reward = sample
+            state, new_state, action, reward, done= sample
 
             state = np.asarray(state).reshape(1, self.num_input)
             new_state = np.asarray(new_state).reshape(1, self.num_input)
