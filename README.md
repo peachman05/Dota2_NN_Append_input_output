@@ -1,10 +1,7 @@
-# DotaBotOfficial
+# Python NN for appending Input and output node
 
-### Run dota2 workshop
-dota_launch_custom_game <workshop_name> dota
-dota_launch_custom_game data_bot dota
-### Speed up
-host_timescale <time scale>
-### Reset
-script_reload
-then reset by typing something in chat box
+### __init__
+create empty neural network or append input output from old NN(append) 
+
+### append_model(self, num_append_input, num_append_output, path_append)
+append input and output in old NN model(.model)
