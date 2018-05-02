@@ -1,3 +1,0 @@
-Flask==0.12.2
-Keras==2.1.2
-tensorflow==1.4.0
